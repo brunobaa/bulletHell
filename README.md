@@ -69,7 +69,7 @@ Você pode ajustar as constantes no início de `bulletHell.go`:
 const (
     WorldWidth    = 30  // largura do mapa (colunas)
     WorldHeight   = 15  // altura do mapa (linhas)
-    UpdatesPerSec = 10  // frames por segundo
+    UpdatesPerSec = 30  // frames por segundo
 )
 ```
 
