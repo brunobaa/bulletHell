@@ -8,7 +8,7 @@ import (
 const (
 	WorldWidth    = 30 // largura do seu “mapa”
 	WorldHeight   = 15 // altura do seu “mapa”
-	UpdatesPerSec = 30 // quantos frames por segundo
+	UpdatesPerSec = 10 // quantos frames por segundo
 )
 
 type Entity struct {
