@@ -12,6 +12,7 @@ const (
 	WorldWidth    = 30 // largura do seu "mapa"
 	WorldHeight   = 15 // altura do seu "mapa"
 	UpdatesPerSec = 10 // quantos frames por segundo
+	MaxLives      = 5  // número máximo de vidas
 )
 
 type Entity struct {
@@ -26,12 +27,17 @@ type Bullet struct {
 	Active     bool // se o projétil está ativo no jogo
 }
 
+type Player struct {
+	Entity
+	Lives int // número de vidas restantes
+}
+
 func clearScreen() {
 	// ANSI escape: home cursor & clear screen
 	fmt.Print("\033[H\033[2J")
 }
 
-func render(entities []Entity, bullets []Bullet, tick int) {
+func render(entities []Entity, bullets []Bullet, player1 Player, tick int) {
 	// prepara grid vazio
 	grid := make([][]rune, WorldHeight)
 	for y := range grid {
@@ -52,6 +58,7 @@ func render(entities []Entity, bullets []Bullet, tick int) {
 	}
 
 	// posiciona entidades (players)
+	grid[player1.Y][player1.X] = player1.Ch
 	for _, e := range entities {
 		if e.Y > 0 && e.Y < WorldHeight-1 && e.X > 0 && e.X < WorldWidth-1 {
 			grid[e.Y][e.X] = e.Ch
@@ -73,10 +80,19 @@ func render(entities []Entity, bullets []Bullet, tick int) {
 		}
 		fmt.Println()
 	}
+
+	// Desenha a barra de vida
+	fmt.Print("\nVidas: ")
+	for i := 0; i < player1.Lives; i++ {
+		fmt.Print("♥ ")
+	}
+	for i := player1.Lives; i < MaxLives; i++ {
+		fmt.Print("♡ ")
+	}
 	fmt.Printf("\nTick: %d\n", tick)
 }
 
-func handleInput(player1 *Entity, done chan bool) {
+func handleInput(player1 *Player, done chan bool) {
 	for {
 		select {
 		case <-done:
@@ -110,21 +126,28 @@ func handleInput(player1 *Entity, done chan bool) {
 	}
 }
 
-func checkCollision(bullet Bullet, player Entity) bool {
+func checkCollision(bullet Bullet, player Player) bool {
 	return bullet.X == player.X && bullet.Y == player.Y
 }
 
-func updateBullets(bullets []Bullet, player Entity) []Bullet {
+func updateBullets(bullets []Bullet, player *Player) []Bullet {
 	// Atualiza posição dos projéteis ativos
 	for i := range bullets {
 		if bullets[i].Active {
 			bullets[i].X += bullets[i].DirectionX
 			bullets[i].Y += bullets[i].DirectionY
 
-			// Desativa projéteis que atingiram as bordas ou o player
+			// Verifica colisão com o player
+			if checkCollision(bullets[i], *player) {
+				bullets[i].Active = false
+				if player.Lives > 0 {
+					player.Lives--
+				}
+			}
+
+			// Desativa projéteis que atingiram as bordas
 			if bullets[i].X <= 0 || bullets[i].X >= WorldWidth-1 ||
-				bullets[i].Y <= 0 || bullets[i].Y >= WorldHeight-1 ||
-				checkCollision(bullets[i], player) {
+				bullets[i].Y <= 0 || bullets[i].Y >= WorldHeight-1 {
 				bullets[i].Active = false
 			}
 		}
@@ -178,7 +201,10 @@ func main() {
 	defer termbox.Close()
 
 	// estado inicial
-	player1 := Entity{X: 2, Y: 2, Ch: '1'}
+	player1 := Player{
+		Entity: Entity{X: 2, Y: 2, Ch: '1'},
+		Lives:  MaxLives,
+	}
 	player2 := Entity{X: WorldWidth - 3, Y: WorldHeight - 3, Ch: '2'}
 
 	// Lista de projéteis
@@ -207,9 +233,9 @@ func main() {
 		case <-ticker.C:
 			tick++
 			// Atualiza posição dos projéteis
-			bullets = updateBullets(bullets, player1)
+			bullets = updateBullets(bullets, &player1)
 			// Renderiza o jogo
-			render([]Entity{player1, player2}, bullets, tick)
+			render([]Entity{player2}, bullets, player1, tick)
 		}
 	}
 }
