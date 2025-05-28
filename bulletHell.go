@@ -2,12 +2,15 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"time"
+
+	"github.com/nsf/termbox-go"
 )
 
 const (
-	WorldWidth    = 30 // largura do seu “mapa”
-	WorldHeight   = 15 // altura do seu “mapa”
+	WorldWidth    = 30 // largura do seu "mapa"
+	WorldHeight   = 15 // altura do seu "mapa"
 	UpdatesPerSec = 10 // quantos frames por segundo
 )
 
@@ -16,12 +19,19 @@ type Entity struct {
 	Ch   rune // caractere a desenhar
 }
 
+type Bullet struct {
+	Entity
+	DirectionX int  // direção X do projétil (-1: esquerda, 0: nenhuma, 1: direita)
+	DirectionY int  // direção Y do projétil (-1: cima, 0: nenhuma, 1: baixo)
+	Active     bool // se o projétil está ativo no jogo
+}
+
 func clearScreen() {
 	// ANSI escape: home cursor & clear screen
 	fmt.Print("\033[H\033[2J")
 }
 
-func render(entities []Entity, tick int) {
+func render(entities []Entity, bullets []Bullet, tick int) {
 	// prepara grid vazio
 	grid := make([][]rune, WorldHeight)
 	for y := range grid {
@@ -41,10 +51,17 @@ func render(entities []Entity, tick int) {
 		grid[y][WorldWidth-1] = '#'
 	}
 
-	// posiciona entidades (players, bullets…)
+	// posiciona entidades (players)
 	for _, e := range entities {
 		if e.Y > 0 && e.Y < WorldHeight-1 && e.X > 0 && e.X < WorldWidth-1 {
 			grid[e.Y][e.X] = e.Ch
+		}
+	}
+
+	// posiciona projéteis
+	for _, b := range bullets {
+		if b.Active && b.Y > 0 && b.Y < WorldHeight-1 && b.X > 0 && b.X < WorldWidth-1 {
+			grid[b.Y][b.X] = b.Ch
 		}
 	}
 
@@ -59,19 +76,140 @@ func render(entities []Entity, tick int) {
 	fmt.Printf("\nTick: %d\n", tick)
 }
 
+func handleInput(player1 *Entity, done chan bool) {
+	for {
+		select {
+		case <-done:
+			return
+		default:
+			ev := termbox.PollEvent()
+			if ev.Type == termbox.EventKey {
+				switch ev.Key {
+				case termbox.KeyArrowUp:
+					if player1.Y > 1 {
+						player1.Y--
+					}
+				case termbox.KeyArrowDown:
+					if player1.Y < WorldHeight-2 {
+						player1.Y++
+					}
+				case termbox.KeyArrowLeft:
+					if player1.X > 1 {
+						player1.X--
+					}
+				case termbox.KeyArrowRight:
+					if player1.X < WorldWidth-2 {
+						player1.X++
+					}
+				case termbox.KeyEsc:
+					done <- true
+					return
+				}
+			}
+		}
+	}
+}
+
+func checkCollision(bullet Bullet, player Entity) bool {
+	return bullet.X == player.X && bullet.Y == player.Y
+}
+
+func updateBullets(bullets []Bullet, player Entity) []Bullet {
+	// Atualiza posição dos projéteis ativos
+	for i := range bullets {
+		if bullets[i].Active {
+			bullets[i].X += bullets[i].DirectionX
+			bullets[i].Y += bullets[i].DirectionY
+
+			// Desativa projéteis que atingiram as bordas ou o player
+			if bullets[i].X <= 0 || bullets[i].X >= WorldWidth-1 ||
+				bullets[i].Y <= 0 || bullets[i].Y >= WorldHeight-1 ||
+				checkCollision(bullets[i], player) {
+				bullets[i].Active = false
+			}
+		}
+	}
+	return bullets
+}
+
+func spawnBullet() Bullet {
+	// Escolhe uma borda aleatória para spawnar o projétil
+	side := rand.Intn(4) // 0: topo, 1: direita, 2: baixo, 3: esquerda
+
+	var bullet Bullet
+	bullet.Ch = '*'
+	bullet.Active = true
+
+	switch side {
+	case 0: // topo
+		bullet.X = rand.Intn(WorldWidth-2) + 1
+		bullet.Y = 1
+		bullet.DirectionX = 0
+		bullet.DirectionY = 1
+	case 1: // direita
+		bullet.X = WorldWidth - 2
+		bullet.Y = rand.Intn(WorldHeight-2) + 1
+		bullet.DirectionX = -1
+		bullet.DirectionY = 0
+	case 2: // baixo
+		bullet.X = rand.Intn(WorldWidth-2) + 1
+		bullet.Y = WorldHeight - 2
+		bullet.DirectionX = 0
+		bullet.DirectionY = -1
+	case 3: // esquerda
+		bullet.X = 1
+		bullet.Y = rand.Intn(WorldHeight-2) + 1
+		bullet.DirectionX = 1
+		bullet.DirectionY = 0
+	}
+
+	return bullet
+}
+
 func main() {
+	// Inicializa o gerador de números aleatórios
+	rand.Seed(time.Now().UnixNano())
+
+	// Inicializa termbox
+	err := termbox.Init()
+	if err != nil {
+		panic(err)
+	}
+	defer termbox.Close()
+
 	// estado inicial
-	bullet := Entity{X: WorldWidth / 2, Y: WorldHeight / 2, Ch: '*'}
 	player1 := Entity{X: 2, Y: 2, Ch: '1'}
 	player2 := Entity{X: WorldWidth - 3, Y: WorldHeight - 3, Ch: '2'}
+
+	// Lista de projéteis
+	bullets := make([]Bullet, 0)
+
+	// Canal para sinalizar quando o jogo deve terminar
+	done := make(chan bool)
+
+	// Inicia a goroutine para captura de teclado
+	go handleInput(&player1, done)
 
 	ticker := time.NewTicker(time.Second / UpdatesPerSec)
 	defer ticker.Stop()
 
 	tick := 0
-	for range ticker.C {
-		tick++
-		// aqui pode atualizar posições de players/balas antes de renderizar
-		render([]Entity{bullet, player1, player2}, tick)
+	spawnTicker := time.NewTicker(time.Second) // Spawna um projétil a cada segundo
+	defer spawnTicker.Stop()
+
+	for {
+		select {
+		case <-done:
+			return
+		case <-spawnTicker.C:
+			// Adiciona um novo projétil
+			bullets = append(bullets, spawnBullet())
+		case <-ticker.C:
+			tick++
+			// Atualiza posição dos projéteis
+			bullets = updateBullets(bullets, player1)
+			// Renderiza o jogo
+			render([]Entity{player1, player2}, bullets, tick)
+		}
 	}
 }
