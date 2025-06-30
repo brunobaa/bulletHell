@@ -37,7 +37,7 @@ func clearScreen() {
 	fmt.Print("\033[H\033[2J")
 }
 
-func render(entities []Entity, bullets []Bullet, player1 Player, tick int) {
+func render(entities []Entity, bullets []Bullet, player1 Player, player2 Player, tick int) {
 	// prepara grid vazio
 	grid := make([][]rune, WorldHeight)
 	for y := range grid {
@@ -59,6 +59,7 @@ func render(entities []Entity, bullets []Bullet, player1 Player, tick int) {
 
 	// posiciona entidades (players)
 	grid[player1.Y][player1.X] = player1.Ch
+	grid[player2.Y][player2.X] = player2.Ch
 	for _, e := range entities {
 		if e.Y > 0 && e.Y < WorldHeight-1 && e.X > 0 && e.X < WorldWidth-1 {
 			grid[e.Y][e.X] = e.Ch
@@ -81,12 +82,21 @@ func render(entities []Entity, bullets []Bullet, player1 Player, tick int) {
 		fmt.Println()
 	}
 
-	// Desenha a barra de vida
-	fmt.Print("\nVidas: ")
+	// Desenha a barra de vida do Player 1
+	fmt.Print("\nPlayer 1 Vidas: ")
 	for i := 0; i < player1.Lives; i++ {
 		fmt.Print("♥ ")
 	}
 	for i := player1.Lives; i < MaxLives; i++ {
+		fmt.Print("♡ ")
+	}
+
+	// Desenha a barra de vida do Player 2
+	fmt.Print("\nPlayer 2 Vidas: ")
+	for i := 0; i < player2.Lives; i++ {
+		fmt.Print("♥ ")
+	}
+	for i := player2.Lives; i < MaxLives; i++ {
 		fmt.Print("♡ ")
 	}
 	fmt.Printf("\nTick: %d\n", tick)
@@ -126,22 +136,30 @@ func handleInput(player1 *Player, done chan bool) {
 	}
 }
 
-func checkCollision(bullet Bullet, player Player) bool {
+func checkCollision(bullet Bullet, player Entity) bool {
 	return bullet.X == player.X && bullet.Y == player.Y
 }
 
-func updateBullets(bullets []Bullet, player *Player) []Bullet {
+func updateBullets(bullets []Bullet, player1 *Player, player2 *Player) []Bullet {
 	// Atualiza posição dos projéteis ativos
 	for i := range bullets {
 		if bullets[i].Active {
 			bullets[i].X += bullets[i].DirectionX
 			bullets[i].Y += bullets[i].DirectionY
 
-			// Verifica colisão com o player
-			if checkCollision(bullets[i], *player) {
+			// Verifica colisão com o player1
+			if checkCollision(bullets[i], player1.Entity) {
 				bullets[i].Active = false
-				if player.Lives > 0 {
-					player.Lives--
+				if player1.Lives > 0 {
+					player1.Lives--
+				}
+			}
+
+			// Verifica colisão com o player2
+			if checkCollision(bullets[i], player2.Entity) {
+				bullets[i].Active = false
+				if player2.Lives > 0 {
+					player2.Lives--
 				}
 			}
 
@@ -189,6 +207,36 @@ func spawnBullet() Bullet {
 	return bullet
 }
 
+func checkGameOver(player1 Player, player2 Player) (bool, string) {
+	if player1.Lives <= 0 && player2.Lives <= 0 {
+		return true, "EMPATE! Ambos os jogadores morreram!"
+	} else if player1.Lives <= 0 {
+		return true, "PLAYER 2 VENCEU! Player 1 foi eliminado!"
+	} else if player2.Lives <= 0 {
+		return true, "PLAYER 1 VENCEU! Player 2 foi eliminado!"
+	}
+	return false, ""
+}
+
+func showGameOver(message string) {
+	clearScreen()
+	fmt.Println("╔══════════════════════════════════════════════════════════════╗")
+	fmt.Println("║                        FIM DE JOGO                           ║")
+	fmt.Println("╠══════════════════════════════════════════════════════════════╣")
+	fmt.Printf("║  %-52s  ║\n", message)
+	fmt.Println("╠══════════════════════════════════════════════════════════════╣")
+	fmt.Println("║  Pressione qualquer tecla para sair...                       ║")
+	fmt.Println("╚══════════════════════════════════════════════════════════════╝")
+
+	// Aguarda uma tecla ser pressionada
+	for {
+		ev := termbox.PollEvent()
+		if ev.Type == termbox.EventKey {
+			break
+		}
+	}
+}
+
 func main() {
 	// Inicializa o gerador de números aleatórios
 	rand.Seed(time.Now().UnixNano())
@@ -205,7 +253,10 @@ func main() {
 		Entity: Entity{X: 2, Y: 2, Ch: '1'},
 		Lives:  MaxLives,
 	}
-	player2 := Entity{X: WorldWidth - 3, Y: WorldHeight - 3, Ch: '2'}
+	player2 := Player{
+		Entity: Entity{X: WorldWidth - 3, Y: WorldHeight - 3, Ch: '2'},
+		Lives:  MaxLives,
+	}
 
 	// Lista de projéteis
 	bullets := make([]Bullet, 0)
@@ -233,9 +284,19 @@ func main() {
 		case <-ticker.C:
 			tick++
 			// Atualiza posição dos projéteis
-			bullets = updateBullets(bullets, &player1)
+			bullets = updateBullets(bullets, &player1, &player2)
+
+			// Verifica se o jogo acabou
+			if gameOver, message := checkGameOver(player1, player2); gameOver {
+				// Renderiza uma última vez para mostrar o estado final
+				render([]Entity{}, bullets, player1, player2, tick)
+				// Mostra a tela de game over
+				showGameOver(message)
+				return
+			}
+
 			// Renderiza o jogo
-			render([]Entity{player2}, bullets, player1, tick)
+			render([]Entity{}, bullets, player1, player2, tick)
 		}
 	}
 }
