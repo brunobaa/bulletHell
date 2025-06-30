@@ -18,7 +18,7 @@ const (
 	UpdatesPerSec = 10
 	MaxLives      = 5
 	Port          = 8080
-	MaxPlayers    = 4 // Suporte para até 4 jogadores
+	MaxPlayers    = 4 
 )
 
 type Entity struct {
