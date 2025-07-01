@@ -15,7 +15,7 @@ import (
 const (
 	WorldWidth    = 30
 	WorldHeight   = 15
-	UpdatesPerSec = 10
+	UpdatesPerSec = 30
 	MaxLives      = 5
 	Port          = 8080
 	MaxPlayers    = 4 
